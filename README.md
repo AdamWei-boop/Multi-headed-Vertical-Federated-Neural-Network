@@ -1,4 +1,4 @@
-# Multi-headed vertical federated neural network
+# Multi-headed Vertical Federated Neural Network
 
 Prerequisites
 -----

@@ -1,4 +1,4 @@
-# Vertical_FL_Adult
+# Multi-headed vertical federated neural network
 
 Prerequisites
 -----

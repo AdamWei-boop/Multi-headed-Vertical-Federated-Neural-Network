@@ -18,4 +18,6 @@ Main Parameters
     parser.add_argument('--organization_num', type=int, default='3', help='number of origanizations, if we use vertical FL')
 Get Started
 -----
+    python tf_vertical_FL_train.py --epochs 100 --model_type 'vertical'
+    python torch_vertical_FL_train.py --epochs 100 --model_type 'vertical'
     

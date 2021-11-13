@@ -8,7 +8,5 @@ Models&Data
 -----
     Learning models: neural networks
     Datasets: Adult
-Training
+Main Parameters
 -----
-
-Description

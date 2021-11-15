@@ -20,7 +20,7 @@ from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import StandardScaler
 # https://imbalanced-learn.org/stable/
 
-from dat import load_dat
+from dat import load_dat, batch_split
 from tf_model import tf_organization_graph, tf_top_graph, tf_graph
 
 def main(args):
@@ -189,31 +189,35 @@ def main(args):
         
         for i in range(epochs):
             
-            with tf.GradientTape(persistent = True) as tape:            
-    
-                organization_outputs = {}
-                for organization_idx in range(organization_num):
-                    organization_outputs[organization_idx] = \
-                        organization_models[organization_idx](X_train_vertical_FL[organization_idx])
-                    
-                y_pre = top_model(organization_outputs)
-                
-                # original code: y_pre = top_model(client_output0, client_output1, client_output2)
-                # revised code version 1: y_pre = top_model(client_outputs[0], client_outputs[1], client_outputs[2])
-                # revised code version 2: y_pre = top_model([client_outputs[j] for j in range(len(client_outputs))])
-
-                loss = tf.reduce_mean(losses.categorical_crossentropy(y_true=y_train, y_pred=y_pre))
-
-                top_grad = tape.gradient(loss, top_model.variables)
-                
-                optimizer.apply_gradients(grads_and_vars=zip(top_grad, top_model.variables))
+            batch_idxs_list = batch_split(len(X_train_vertical_FL[0]), args.batch_size, args.batch_type)
+            
+            for batch_idxs in batch_idxs_list:
+            
+                with tf.GradientTape(persistent = True) as tape:            
         
-                # Kang: the following codes need additional work
-                for organization_idx in range(organization_num):
-                    organization_model_grad = tape.gradient(loss, organization_models[organization_idx].variables)     
-                    optimizer.apply_gradients(grads_and_vars=zip(organization_model_grad, organization_models[organization_idx].variables))
-                
-                del tape
+                    organization_outputs = {}
+                    for organization_idx in range(organization_num):
+                        organization_outputs[organization_idx] = \
+                            organization_models[organization_idx](X_train_vertical_FL[organization_idx][batch_idxs])
+                        
+                    y_pre = top_model(organization_outputs)
+                    
+                    # original code: y_pre = top_model(client_output0, client_output1, client_output2)
+                    # revised code version 1: y_pre = top_model(client_outputs[0], client_outputs[1], client_outputs[2])
+                    # revised code version 2: y_pre = top_model([client_outputs[j] for j in range(len(client_outputs))])
+    
+                    loss = tf.reduce_mean(losses.categorical_crossentropy(y_true=y_train[batch_idxs], y_pred=y_pre))
+    
+                    top_grad = tape.gradient(loss, top_model.variables)
+                    
+                    optimizer.apply_gradients(grads_and_vars=zip(top_grad, top_model.variables))
+            
+                    # Kang: the following codes need additional work
+                    for organization_idx in range(organization_num):
+                        organization_model_grad = tape.gradient(loss, organization_models[organization_idx].variables)     
+                        optimizer.apply_gradients(grads_and_vars=zip(organization_model_grad, organization_models[organization_idx].variables))
+                    
+                    del tape
                 
             # let the program report the simulation progress
             if (i+1)%1 == 0:
@@ -287,8 +291,9 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='vertical FL')
     parser.add_argument('--dname', default='ADULT', help='dataset name')
-    parser.add_argument('--epochs', type=int, default=10, help='number of training epochs')    
-    parser.add_argument('--batch_size', type=int, default=-1)
+    parser.add_argument('--epochs', type=int, default=10, help='number of training epochs') 
+    parser.add_argument('--batch_type', type=str, default='mini-batch')  
+    parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--data_type', default='original', help='define the data options: original or one-hot encoded')
     parser.add_argument('--model_type', default='vertical', help='define the learning methods: vrtical or centralized')    
     parser.add_argument('--organization_num', type=int, default='3', help='number of origanizations, if we use vertical FL')    

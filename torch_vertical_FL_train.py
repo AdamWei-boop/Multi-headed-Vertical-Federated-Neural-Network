@@ -17,7 +17,7 @@ from sklearn import preprocessing
 from sklearn.metrics import accuracy_score
 # https://imbalanced-learn.org/stable/
 
-from dat import load_dat
+from dat import load_dat, batch_split
 from torch_model import MlpModel, torch_organization_model, torch_top_model
 
 def main(args):
@@ -188,30 +188,32 @@ def main(args):
         top_model.train()
         for i in range(epochs):
             
+            batch_idxs_list = batch_split(len(X_train_vertical_FL[0]), args.batch_size, args.batch_type)
             
-            optimizer.zero_grad()
-            
-            organization_outputs = {}
-            for organization_idx in range(organization_num):
-                    organization_outputs[organization_idx] = \
-                        organization_models[organization_idx](X_train_vertical_FL[organization_idx])
-
+            for batch_idxs in batch_idxs_list:
+                optimizer.zero_grad()
                 
-            if len(organization_outputs) >= 2:
-                organization_outputs_cat = organization_outputs[0]
-                for organization_idx in range(1, organization_num):
-                    organization_outputs_cat = torch.cat((organization_outputs_cat,\
-                                    organization_outputs[organization_idx]), 1)
+                organization_outputs = {}
+                for organization_idx in range(organization_num):
+                        organization_outputs[organization_idx] = \
+                            organization_models[organization_idx](X_train_vertical_FL[organization_idx][batch_idxs])
+    
+                    
+                if len(organization_outputs) >= 2:
+                    organization_outputs_cat = organization_outputs[0]
+                    for organization_idx in range(1, organization_num):
+                        organization_outputs_cat = torch.cat((organization_outputs_cat,\
+                                        organization_outputs[organization_idx]), 1)
+                    
+                outputs = top_model(organization_outputs_cat)
+    
+                loss = criterion(outputs, y_train[batch_idxs])
+                loss.backward()
+                optimizer.step()
                 
-            outputs = top_model(organization_outputs_cat)
-
-            loss = criterion(outputs, y_train)
-            loss.backward()
-            optimizer.step()
-            
-            for organization_idx in range(organization_num):
-                
-                optimizer_organization_list[organization_idx].step()
+                for organization_idx in range(organization_num):
+                    
+                    optimizer_organization_list[organization_idx].step()
    
             # let the program report the simulation progress
             if (i+1)%1 == 0:
@@ -288,8 +290,9 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='vertical FL')
     parser.add_argument('--dname', default='ADULT', help='dataset name')
-    parser.add_argument('--epochs', type=int, default=100, help='number of training epochs')    
-    parser.add_argument('--batch_size', type=int, default=32000)
+    parser.add_argument('--epochs', type=int, default=10, help='number of training epochs')  
+    parser.add_argument('--batch_type', type=str, default='mini-batch')    
+    parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--data_type', default='original', help='define the data options: original or one-hot encoded')
     parser.add_argument('--model_type', default='vertical', help='define the learning methods: vrtical or centralized')    
     parser.add_argument('--organization_num', type=int, default='3', help='number of origanizations, if we use vertical FL')

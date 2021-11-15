@@ -1,7 +1,29 @@
 import numpy as np
+import random
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import Normalizer
 
+def batch_split(data_size, batch_size, batch_type):
+    
+    original_idxs = range(data_size) 
+    
+    batch_idxs_list = []
+    if batch_type == 'mini-batch':
+        num_batchs = int(np.ceil(data_size/batch_size))
+        
+        
+        for i in range(num_batchs):
+            if len(original_idxs) > batch_size:
+                batch_idxs = random.sample(original_idxs, batch_size)
+                original_idxs = list(set(original_idxs)-set(batch_idxs))
+            else:
+                batch_idxs = original_idxs
+            batch_idxs_list.append(batch_idxs)
+    else:
+        
+        batch_idxs_list.append(random.sample(original_idxs, batch_size))
+        
+    return batch_idxs_list
 
 def majority_label(y):
     N = y.shape[0]

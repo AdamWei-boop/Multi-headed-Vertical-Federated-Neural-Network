@@ -19,7 +19,7 @@ if __name__ == '__main__':
 
     interval_dense, interval_sparse = 6, 13
 
-    file_path = './datasets/criteo.txt'
+    file_path = './dataset/criteo.txt'
         
     feature_columns, (X_train, y_train), (X_test, y_test) = create_criteo_dataset_dfm(file_path, data_size=50000, test_size=0.2)
     

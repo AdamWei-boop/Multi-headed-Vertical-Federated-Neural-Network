@@ -9,7 +9,7 @@ from tensorflow.keras import optimizers, losses
 from sklearn.metrics import accuracy_score
 
 if __name__ == '__main__':
-    file_path = './datasets/criteo.txt'
+    file_path = './dataset/criteo.txt'
     feature_columns, (X_train, y_train), (X_test, y_test) = create_criteo_dataset_dfm(file_path, data_size=50000, test_size=0.2)
 
     k = 10

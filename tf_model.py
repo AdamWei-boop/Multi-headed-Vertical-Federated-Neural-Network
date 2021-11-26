@@ -56,7 +56,7 @@ class tf_top_graph(Model):
                 x = tf.concat([x, client_intputs[input_idx+2]], axis=-1)
             
         output = self.Dense(x)
-        output = tf.nn.sigmoid(output)
+        output = tf.nn.softmax(output)
         output = tf.reshape(output, shape = [len(output),-1])
         return output
     
@@ -81,6 +81,6 @@ class tf_graph(Model):
     def call(self, inputs):
 
         output = self.Dense(inputs)
-        output = tf.nn.sigmoid(output)
+        output = tf.nn.softmax(output)
 
         return output

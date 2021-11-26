@@ -39,7 +39,7 @@ class torch_top_model(nn.Module):
         x = self.input_layer(x)
         x = self.hidden_layers(x)
         x = self.output_layer(x)
-        x = torch.sigmoid(x)
+        x = nn.softmax(x)
 
         return x
 
@@ -60,6 +60,6 @@ class MlpModel(nn.Module):
         x = self.input_layer(x)
         x = self.hidden_layers(x)
         x = self.output_layer(x)
-        x = torch.sigmoid(x)
+        x = nn.softmax(x)
 
         return x

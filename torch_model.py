@@ -33,13 +33,14 @@ class torch_top_model(nn.Module):
             hidden_layers.append(torch.relu())
         self.hidden_layers = nn.Sequential(*hidden_layers)
         self.output_layer = nn.Linear(hidden_units[-1], num_classes)
+        self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
 
         x = self.input_layer(x)
         x = self.hidden_layers(x)
         x = self.output_layer(x)
-        x = nn.softmax(x)
+        x = self.softmax(x)
 
         return x
 
@@ -54,12 +55,13 @@ class MlpModel(nn.Module):
             hidden_layers.append(torch.relu())
         self.hidden_layers = nn.Sequential(*hidden_layers)
         self.output_layer = nn.Linear(hidden_units[-1], num_classes)
+        self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
 
         x = self.input_layer(x)
         x = self.hidden_layers(x)
         x = self.output_layer(x)
-        x = nn.softmax(x)
+        x = self.softmax(x)
 
         return x

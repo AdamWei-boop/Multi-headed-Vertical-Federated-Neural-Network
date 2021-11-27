@@ -17,7 +17,7 @@ from sklearn import preprocessing
 from sklearn.metrics import accuracy_score
 # https://imbalanced-learn.org/stable/
 
-from dat import load_dat, batch_split
+from utils import load_dat, batch_split
 from torch_model import MlpModel, torch_organization_model, torch_top_model
 
 def main(args):

@@ -57,10 +57,11 @@ class Dense_layer(Layer):
         output = self.output_layer(x)
         return output
 
-class tf_host_bottom_graph(Model):
+class tf_organization_graph(Model):
     def __init__(self, feature_columns, hidden_units, output_dim, activation):
         super().__init__()
         self.dense_feature_columns, self.sparse_feature_columns = feature_columns
+        self.num_dense_feature = len(self.dense_feature_columns)
         self.embed_layers = {
             'embed_' + str(i): Embedding(feat['feat_onehot_dim'], feat['embed_dim'])
              for i, feat in enumerate(self.sparse_feature_columns)
@@ -68,32 +69,12 @@ class tf_host_bottom_graph(Model):
         self.Dense = Dense_layer(hidden_units, output_dim, activation)
 
     def call(self, inputs):
-        dense_inputs, sparse_inputs = inputs[:, :6], inputs[:, 6:]
+        dense_inputs, sparse_inputs = inputs[:, :self.num_dense_feature], inputs[:, self.num_dense_feature:]
         sparse_embed = tf.concat([self.embed_layers['embed_{}'.format(i)](sparse_inputs[:, i])
                                   for i in range(sparse_inputs.shape[1])], axis=1)
         x = tf.concat([dense_inputs, sparse_embed], axis=-1)
         host_bottom_output = self.Dense(x)
         return host_bottom_output
-
-class tf_guest_bottom_graph(Model):
-    def __init__(self, feature_columns, hidden_units, output_dim, activation):
-        super().__init__()
-        self.dense_feature_columns, self.sparse_feature_columns = feature_columns
-        self.embed_layers = {
-            'embed_' + str(i): Embedding(feat['feat_onehot_dim'], feat['embed_dim'])
-             for i, feat in enumerate(self.sparse_feature_columns)
-        }
-        self.Dense = Dense_layer(hidden_units, output_dim, activation)
-
-    def call(self, inputs):
-        dense_inputs, sparse_inputs = inputs[:, :7], inputs[:, 7:]
-        # embedding
-        sparse_embed = tf.concat([self.embed_layers['embed_{}'.format(i)](sparse_inputs[:, i])
-                                  for i in range(sparse_inputs.shape[1])], axis=1)
-        x = tf.concat([dense_inputs, sparse_embed], axis=-1)
-        guest_bottom_output = self.Dense(x)
-        return guest_bottom_output
-
 
 class tf_top_graph(Model):
     def __init__(self, k, w_reg, v_reg, hidden_units, output_dim, activation):
@@ -101,9 +82,15 @@ class tf_top_graph(Model):
         self.FM = FM_layer(k, w_reg, v_reg)
         self.Dense = Dense_layer(hidden_units, output_dim, activation)
 
-    def call(self, host_bottom_output, guest_bottom_output):
+    def call(self, client_intputs):
+        
 
-        x = tf.concat([host_bottom_output, guest_bottom_output], axis=-1)
+        x = tf.concat([client_intputs[0], client_intputs[1]], axis=-1)
+        
+        if len(client_intputs) > 2:
+            for input_idx in range(len(client_intputs)-2):
+                x = tf.concat([x, client_intputs[input_idx+2]], axis=-1)
+                
         fm_output = self.FM(x)
         dense_output = self.Dense(x)
         logits = tf.nn.sigmoid(0.5*(fm_output + dense_output))

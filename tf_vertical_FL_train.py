@@ -20,7 +20,7 @@ from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import StandardScaler
 # https://imbalanced-learn.org/stable/
 
-from dat import load_dat, batch_split
+from utils import create_criteo_dataset, load_dat, batch_split
 from tf_model import tf_organization_graph, tf_top_graph, tf_graph
 
 def main(args):
@@ -37,53 +37,54 @@ def main(args):
     
     # dataset preprocessing
     if data_type == 'original': 
-
-        file_path = "./dataset/{0}.csv".format(args.dname)
-        X = pd.read_csv(file_path)
-        # X = pd.read_csv(file_path, nrows = nrows)
         
-        if args.dname == 'ADULT':
-              # Ming added the following codes on 11/11/2021 to pre-process the Adult dataset
-              # remove a duplicated attributed of "edu"
-              X = X.drop(columns=['edu'])
-              # rename an attribute from "skin" to "race"
-              X = X.rename({'skin':'race'}, axis=1)
-              
-              # Ming added the following codes on 11/11/2021 to perform a quick sanity check of the dataset
-              X.head()
-              for attribute in X.columns:
-                  #print(dt.value_counts(dt[attribute]))
-                  plt.figure()
-                  X.value_counts(X[attribute]).sort_index(ascending=True).plot(kind='bar')
-    
-              N, dim = X.shape
+        if args.dname == 'adult':
             
-              # Print out the dataset settings
-              print("\n\n=================================")
-              print("\nDataset:", args.dname, \
-                    "\nNumber of attributes:", dim-1, \
-                    "\nNumber of labels:", 1, \
-                    "\nNumber of rows:", N)        
+            file_path = "./datasets/{0}.csv".format(args.dname)
+            X = pd.read_csv(file_path)
+            # X = pd.read_csv(file_path, nrows = nrows)
+        
+            # Ming added the following codes on 11/11/2021 to pre-process the Adult dataset
+            # remove a duplicated attributed of "edu"
+            X = X.drop(columns=['edu'])
+            # rename an attribute from "skin" to "race"
+            X = X.rename({'skin':'race'}, axis=1)
             
-              columns = list(X.columns)
-              
-              # get the attribute data and label data
-              y = X['income'].values.astype('int')
-              X = X.drop(['income'], axis=1)
-              
-              # set up the attribute split scheme for vertical FL
-              attribute_split_array = \
-                  np.ones(len(attribute_split_array)).astype(int) * \
-                  int((dim-1)/organization_num)
-                  
-              # correct the attribute split scheme if the total attribute number is larger than the actual attribute number
-              if np.sum(attribute_split_array) > dim-1:
-                  print('unknown error in attribute splitting!')
-              elif np.sum(attribute_split_array) < dim-1:
-                  missing_attribute_num = (dim-1) - np.sum(attribute_split_array)
-                  attribute_split_array[-1] = attribute_split_array[-1] + missing_attribute_num
-              else:
-                  print('Successful attribute split for multiple organizations')
+            # Ming added the following codes on 11/11/2021 to perform a quick sanity check of the dataset
+            X.head()
+            for attribute in X.columns:
+                #print(dt.value_counts(dt[attribute]))
+                plt.figure()
+                X.value_counts(X[attribute]).sort_index(ascending=True).plot(kind='bar')
+  
+            N, dim = X.shape
+          
+            # Print out the dataset settings
+            print("\n\n=================================")
+            print("\nDataset:", args.dname, \
+                  "\nNumber of attributes:", dim-1, \
+                  "\nNumber of labels:", 1, \
+                  "\nNumber of rows:", N)        
+          
+            columns = list(X.columns)
+            
+            # get the attribute data and label data
+            y = X['income'].values.astype('int')
+            X = X.drop(['income'], axis=1)
+            
+            # set up the attribute split scheme for vertical FL
+            attribute_split_array = \
+                np.ones(len(attribute_split_array)).astype(int) * \
+                int((dim-1)/organization_num)
+                
+            # correct the attribute split scheme if the total attribute number is larger than the actual attribute number
+            if np.sum(attribute_split_array) > dim-1:
+                print('unknown error in attribute splitting!')
+            elif np.sum(attribute_split_array) < dim-1:
+                missing_attribute_num = (dim-1) - np.sum(attribute_split_array)
+                attribute_split_array[-1] = attribute_split_array[-1] + missing_attribute_num
+            else:
+                print('Successful attribute split for multiple organizations')
                   
     else:
         file_path = "./dataset/{0}.dat".format(args.dname)
@@ -264,16 +265,20 @@ def main(args):
         print('\nStart centralized learning......\n')
         for i in range(epochs):
             
-            with tf.GradientTape() as tape:
-
-                # SGD optimization of the neural network
-                y_pre = model(X_train)
-                # print(y_pre.shape, y_train.shape)
-                loss = tf.reduce_mean(losses.categorical_crossentropy(y_true=y_train, y_pred=y_pre))
-
-                model_grad = tape.gradient(loss, model.variables)
-                optimizer.apply_gradients(grads_and_vars=zip(model_grad, model.variables))
+            batch_idxs_list = batch_split(len(X_train[0]), args.batch_size, args.batch_type)
+            
+            for batch_idxs in batch_idxs_list:
+            
+                with tf.GradientTape() as tape:
     
+                    # SGD optimization of the neural network
+                    y_pre = model(X_train[batch_idxs])
+                    # print(y_pre.shape, y_train.shape)
+                    loss = tf.reduce_mean(losses.categorical_crossentropy(y_true=y_train[batch_idxs], y_pred=y_pre))
+    
+                    model_grad = tape.gradient(loss, model.variables)
+                    optimizer.apply_gradients(grads_and_vars=zip(model_grad, model.variables))
+        
             # let the program report the simulation progress
             if (i+1)%1 == 0:
                 log_probs = model(X_test)
@@ -290,7 +295,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='vertical FL')
-    parser.add_argument('--dname', default='ADULT', help='dataset name')
+    parser.add_argument('--dname', default='adult', help='dataset name')
     parser.add_argument('--epochs', type=int, default=10, help='number of training epochs') 
     parser.add_argument('--batch_type', type=str, default='mini-batch')  
     parser.add_argument('--batch_size', type=int, default=512)

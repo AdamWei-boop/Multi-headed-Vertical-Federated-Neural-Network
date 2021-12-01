@@ -18,7 +18,7 @@ class Dense_layer(Layer):
         self.output_dim = output_dim
         self.activation = activation
 
-        self.hidden_layer = [Dense(i, activation=self.activation)
+        self.hidden_layer = [Dense(i, activation=self.activation, kernel_regularizer=tf.keras.regularizers.L2(0.01))
                              for i in self.hidden_units]
         self.output_layer = Dense(self.output_dim, activation=None)
 

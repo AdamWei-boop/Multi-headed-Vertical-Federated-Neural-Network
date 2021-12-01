@@ -17,7 +17,11 @@ from sklearn import preprocessing
 from sklearn.metrics import accuracy_score
 # https://imbalanced-learn.org/stable/
 
-from utils import load_dat, batch_split
+from utils import load_dat, batch_split, create_avazu_dataset
+"""
+Reference
+    https://www.kaggle.com/c/avazu-ctr-prediction
+"""
 from torch_model import MlpModel, torch_organization_model, torch_top_model
 
 def main(args):
@@ -28,58 +32,99 @@ def main(args):
     organization_num = args.organization_num    # number of participants in vertical FL
     attribute_split_array = \
         np.zeros(organization_num).astype(int)  # initialize a dummy split scheme of attributes
-    nrows = None                                # subselection of rows to speed up the program
+    nrows = 20000                                # subselection of rows to speed up the program
     
     # dataset preprocessing
     if data_type == 'original': 
-
-        file_path = "./dataset/{0}.csv".format(args.dname)
-        X = pd.read_csv(file_path)
-        # X = pd.read_csv(file_path, nrows = nrows)
         
         if args.dname == 'ADULT':
-              # Ming added the following codes on 11/11/2021 to pre-process the Adult dataset
-              # remove a duplicated attributed of "edu"
-              X = X.drop(columns=['edu'])
-              # rename an attribute from "skin" to "race"
-              X = X.rename({'skin':'race'}, axis=1)
-              
-              # Ming added the following codes on 11/11/2021 to perform a quick sanity check of the dataset
-              X.head()
-              for attribute in X.columns:
-                  #print(dt.value_counts(dt[attribute]))
-                  plt.figure()
-                  X.value_counts(X[attribute]).sort_index(ascending=True).plot(kind='bar')
-    
-              N, dim = X.shape
             
-              # Print out the dataset settings
-              print("\n\n=================================")
-              print("\nDataset:", args.dname, \
-                    "\nNumber of attributes:", dim-1, \
-                    "\nNumber of labels:", 1, \
-                    "\nNumber of rows:", N)        
+            file_path = "./datasets/{0}.csv".format(args.dname)
+            X = pd.read_csv(file_path)
+            # X = pd.read_csv(file_path, nrows = nrows)
             
-              columns = list(X.columns)
-              
-              # get the attribute data and label data
-              y = X['income'].values.astype('int')
-              X = X.drop(['income'], axis=1)
-              
-              # set up the attribute split scheme for vertical FL
-              attribute_split_array = \
-                  np.ones(len(attribute_split_array)).astype(int) * \
-                  int((dim-1)/organization_num)
-                  
-              # correct the attribute split scheme if the total attribute number is larger than the actual attribute number
-              if np.sum(attribute_split_array) > dim-1:
-                  print('unknown error in attribute splitting!')
-              elif np.sum(attribute_split_array) < dim-1:
-                  missing_attribute_num = (dim-1) - np.sum(attribute_split_array)
-                  attribute_split_array[-1] = attribute_split_array[-1] + missing_attribute_num
-              else:
-                  print('Successful attribute split for multiple organizations')
-                  
+            # Ming added the following codes on 11/11/2021 to pre-process the Adult dataset
+            # remove a duplicated attributed of "edu"
+            X = X.drop(columns=['edu'])
+            # rename an attribute from "skin" to "race"
+            X = X.rename({'skin':'race'}, axis=1)
+ 
+            # Ming added the following codes on 11/11/2021 to perform a quick sanity check of the dataset
+            X.head()
+            for attribute in X.columns:
+                #print(dt.value_counts(dt[attribute]))
+                plt.figure()
+                X.value_counts(X[attribute]).sort_index(ascending=True).plot(kind='bar')
+               
+            N, dim = X.shape
+               
+             # Print out the dataset settings
+            print("\n\n=================================")
+            print("\nDataset:", args.dname, \
+                   "\nNumber of attributes:", dim-1, \
+                   "\nNumber of labels:", 1, \
+                   "\nNumber of rows:", N)        
+               
+            columns = list(X.columns)
+             
+             # get the attribute data and label data
+            y = X['income'].values.astype('int')
+            X = X.drop(['income'], axis=1)
+             
+             # set up the attribute split scheme for vertical FL
+            attribute_split_array = \
+                 np.ones(len(attribute_split_array)).astype(int) * \
+                 int((dim-1)/organization_num)
+                 
+             # correct the attribute split scheme if the total attribute number is larger than the actual attribute number
+            if np.sum(attribute_split_array) > dim-1:
+                print('unknown error in attribute splitting!')
+            elif np.sum(attribute_split_array) < dim-1:
+                missing_attribute_num = (dim-1) - np.sum(attribute_split_array)
+                attribute_split_array[-1] = attribute_split_array[-1] + missing_attribute_num
+            else:
+                print('Successful attribute split for multiple organizations')
+     
+        elif args.dname == 'AVAZU':
+            
+            file_path = './datasets/{0}.gz'.format(args.dname)           
+            data = pd.read_csv(file_path, compression='gzip', nrows=nrows)
+            
+            X = data.fillna('-1')
+            
+            X.head()
+            
+            N, dim = X.shape
+            
+            dim = dim-1
+               
+             # Print out the dataset settings
+            print("\n\n=================================")
+            print("\nDataset:", args.dname, \
+                   "\nNumber of attributes:", dim-1, \
+                   "\nNumber of labels:", 1, \
+                   "\nNumber of rows:", N)
+            
+            X = data.drop(['click', 'id'], axis=1)
+            
+            columns = list(X.columns)
+            
+            y = data['click'].values
+            
+             # set up the attribute split scheme for vertical FL
+            attribute_split_array = \
+                 np.ones(len(attribute_split_array)).astype(int) * \
+                 int((dim-1)/organization_num)
+                 
+             # correct the attribute split scheme if the total attribute number is larger than the actual attribute number
+            if np.sum(attribute_split_array) > dim-1:
+                print('unknown error in attribute splitting!')
+            elif np.sum(attribute_split_array) < dim-1:
+                missing_attribute_num = (dim-1) - np.sum(attribute_split_array)
+                attribute_split_array[-1] = attribute_split_array[-1] + missing_attribute_num
+            else:
+                print('Successful attribute split for multiple organizations')
+     
     else:
         file_path = "./dataset/{0}.dat".format(args.dname)
         X, y = load_dat(file_path, minmax=(0, 1), normalize=False, bias_term=True)  
@@ -114,10 +159,17 @@ def main(args):
         encoded_vertical_splitted_data = {}
         chy_one_hot_enc = preprocessing.OneHotEncoder(sparse=False, handle_unknown='ignore')
         for organization_idx in range(organization_num):
-            vertical_splitted_data[organization_idx] = \
-                X[attribute_groups[organization_idx]].values.astype('float32')
-            encoded_vertical_splitted_data[organization_idx] = \
-                chy_one_hot_enc.fit_transform(vertical_splitted_data[organization_idx])
+            
+            if args.dname == 'ADULT':
+                vertical_splitted_data[organization_idx] = \
+                    X[attribute_groups[organization_idx]].values.astype('float32')
+                encoded_vertical_splitted_data[organization_idx] = \
+                    chy_one_hot_enc.fit_transform(vertical_splitted_data[organization_idx])
+            elif args.dname == 'AVAZU':
+                vertical_splitted_data[organization_idx] = \
+                    pd.get_dummies(X[attribute_groups[organization_idx]])
+                encoded_vertical_splitted_data[organization_idx] = \
+                    vertical_splitted_data[organization_idx].values.astype('float32')
             print('The shape of the encoded dataset held by Organization {0}: {1}'.format(organization_idx, np.shape(encoded_vertical_splitted_data[organization_idx])))                       
         
         # set up the random seed for dataset split
@@ -171,7 +223,7 @@ def main(args):
         top_model = torch_top_model(sum(organization_output_dim), top_hidden_units, top_output_dim)
     
         # define the neural network optimizer
-        optimizer = torch.optim.Adam(top_model.parameters(), lr=0.002)
+        optimizer = torch.optim.Adam(top_model.parameters(), lr=0.01)
         
         optimizer_organization_list = []
         for organization_idx in range(organization_num):
@@ -238,8 +290,12 @@ def main(args):
                 acc_array.append(acc)
  
     elif model_type == 'centralized':
-        chy_one_hot_enc = preprocessing.OneHotEncoder(sparse=False, handle_unknown='ignore')
-        X = chy_one_hot_enc.fit_transform( X )
+        if args.dname == 'ADULT':
+            chy_one_hot_enc = preprocessing.OneHotEncoder(sparse=False, handle_unknown='ignore')
+            X = chy_one_hot_enc.fit_transform( X )
+        elif args.dname == 'AVAZU':       
+            X = pd.get_dummies(X).values
+            
     
         print('Client data shape: {}, postive ratio: {}'.format(X.shape, sum(y)/len(y)))
         
@@ -259,12 +315,13 @@ def main(args):
         # X_train, y_train = sm.fit_resample( X_train, y_train )
         # print('SMOTE, X_train.shape: ', X_train.shape)
         
-        hidden_units = np.array([64])
+        hidden_units = np.array([128])
     
         model = MlpModel(input_dim=X_train.shape[-1], hidden_units=hidden_units, num_classes=2)
         optimizer = optimizer = torch.optim.Adam(model.parameters(), lr=0.002)
         
         criterion = nn.CrossEntropyLoss()
+        # criterion = nn.BCELoss()
     
         model.train()
         for i in range(epochs):
@@ -272,15 +329,17 @@ def main(args):
                 optimizer.zero_grad()
     
                 # compute output
-                outputs = model(data)
+                logits = model(data)
+                # logits = torch.sigmoid(outputs)
                 # outputs = torch.reshape(outputs, shape = [len(outputs)])
                 # print(outputs.dtype, targets.dtype)
-                loss = criterion(outputs, targets)
+                loss = criterion(logits, targets)
                 loss.backward()
                 optimizer.step()
     
             for idx, (data, targets) in enumerate(test_loader):
                 log_probs = model(data)
+                # y_pred = [1 if i > 0.5 else 0 for i in log_probs.data]
                 y_pred = np.argmax(log_probs.data, axis=1)
                 acc = accuracy_score(y_true=targets.data, y_pred=y_pred)
             print('For the {}-th epoch, test acc: {}'.format(i, acc))
@@ -289,12 +348,12 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='vertical FL')
-    parser.add_argument('--dname', default='ADULT', help='dataset name')
+    parser.add_argument('--dname', default='ADULT', help='dataset name: AVAZU, ADULT')
     parser.add_argument('--epochs', type=int, default=10, help='number of training epochs')  
     parser.add_argument('--batch_type', type=str, default='mini-batch')    
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--data_type', default='original', help='define the data options: original or one-hot encoded')
-    parser.add_argument('--model_type', default='vertical', help='define the learning methods: vrtical or centralized')    
+    parser.add_argument('--model_type', default='centralized', help='define the learning methods: vrtical or centralized')    
     parser.add_argument('--organization_num', type=int, default='3', help='number of origanizations, if we use vertical FL')
 
     args = parser.parse_args()

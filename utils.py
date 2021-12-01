@@ -6,6 +6,14 @@
 import pandas as pd
 import numpy as np
 import random
+import shutil
+import struct
+import lmdb
+import torch.utils.data
+
+from collections import defaultdict
+from pathlib import Path
+from tqdm import tqdm
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import Normalizer
@@ -91,6 +99,14 @@ def sparseFeature(feat, feat_onehot_dim, embed_dim):
 
 def denseFeature(feat):
     return {'feat': feat}
+
+def create_avazu_dataset(file_path, data_size=10000):
+    
+    data = pd.read_csv(file_path, compression='gzip', nrows=data_size)
+    
+    X = data.fillna('-1')
+    
+    return X
 
 def create_criteo_dataset(file_path, data_size=10000, embed_dim=8, test_size=0.2):
     data = pd.read_csv(file_path, nrows=data_size)

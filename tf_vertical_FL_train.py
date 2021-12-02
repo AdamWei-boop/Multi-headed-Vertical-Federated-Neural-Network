@@ -16,10 +16,10 @@ from keras.utils.np_utils import to_categorical
 from tensorflow.keras import optimizers, losses
 from sklearn.model_selection import train_test_split
 from sklearn import preprocessing
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 # https://imbalanced-learn.org/stable/
-
+from avazudataset import AvazuDataset
 from utils import create_criteo_dataset, load_dat, batch_split
 from tf_model import tf_organization_graph, tf_top_graph, tf_graph
 
@@ -28,7 +28,7 @@ def main(args):
     data_type = args.data_type           # Define the data options: 'original', 'encoded'
     model_type = args.model_type         # Define the learning methods: 'vertical', 'centralized'
     epochs = args.epochs                 # number of training epochs
-    #nrows = None                        # subselection of rows to speed up the program
+    nrows = 20000                        # subselection of rows to speed up the program
     
     # Ming added the following variables for configurable vertical FL
     organization_num = args.organization_num    # number of participants in vertical FL
@@ -85,7 +85,58 @@ def main(args):
                 attribute_split_array[-1] = attribute_split_array[-1] + missing_attribute_num
             else:
                 print('Successful attribute split for multiple organizations')
-                  
+                
+                
+        elif args.dname == 'AVAZU':
+            
+            file_path = './datasets/{0}.gz'.format(args.dname)
+            df = pd.read_csv(file_path, compression='gzip', nrows=nrows)
+            df.to_csv('./datasets/{0}.csv'.format(args.dname), index=False)
+            
+            columns = df.columns.drop('id')
+            # data = pd.read_csv(file_path, compression='gzip', nrows=nrows)
+            data = AvazuDataset('./datasets/{0}.csv'.format(args.dname), rebuild_cache=True)
+            
+            # X = data.fillna('-1')
+            
+            # X.head()
+
+            data, labels = [data[i][0] for i in range(len(data))], [data[i][1] for i in range(len(data))]
+            labels = np.reshape(labels, [len(labels), 1])
+            data = np.concatenate((labels, data),axis=1)
+            
+            X = pd.DataFrame(data, columns=columns)
+            
+            # get the attribute data and label data
+            y = X['click'].values.astype('int')
+            X = X.drop(['click'], axis=1)
+            
+            N, dim = X.shape
+               
+             # Print out the dataset settings
+            print("\n\n=================================")
+            print("\nDataset:", args.dname, \
+                   "\nNumber of attributes:", dim-1, \
+                   "\nNumber of labels:", 1, \
+                   "\nNumber of rows:", N,\
+                   "\nPostive ratio:", sum(y)/len(y))            
+            
+            columns = list(X.columns)
+            
+             # set up the attribute split scheme for vertical FL
+            attribute_split_array = \
+                 np.ones(len(attribute_split_array)).astype(int) * \
+                 int(dim/organization_num)
+                 
+             # correct the attribute split scheme if the total attribute number is larger than the actual attribute number
+            if np.sum(attribute_split_array) > dim:
+                print('unknown error in attribute splitting!')
+            elif np.sum(attribute_split_array) < dim:
+                missing_attribute_num = dim - np.sum(attribute_split_array)
+                attribute_split_array[-1] = attribute_split_array[-1] + missing_attribute_num
+            else:
+                print('Successful attribute split for multiple organizations')
+                                  
     else:
         file_path = "./dataset/{0}.dat".format(args.dname)
         X, y = load_dat(file_path, minmax=(0, 1), normalize=False, bias_term=True)    
@@ -228,8 +279,9 @@ def main(args):
                         organization_models[organization_idx](X_test_vertical_FL[organization_idx])
                 
                 log_probs = top_model(organization_outputs_for_test)
-                pre = tf.argmax(log_probs, axis=1)
-                acc = accuracy_score(y_test, pre)
+                # pre = tf.argmax(log_probs, axis=1)
+                # acc = accuracy_score(y_test, pre)
+                acc = roc_auc_score(y_test, log_probs[:,1])
                 print('For the {0}-th epoch, train loss: {1}, test acc: {2}'.format(i+1, loss.numpy(), acc))
                 
                 test_epoch_array.append(i+1)
@@ -282,9 +334,9 @@ def main(args):
             # let the program report the simulation progress
             if (i+1)%1 == 0:
                 log_probs = model(X_test)
-                pre = tf.argmax(log_probs, axis=1)
-                acc = accuracy_score(y_test, pre)
-
+                # pre = tf.argmax(log_probs, axis=1)
+                # acc = accuracy_score(y_test, pre)
+                acc = roc_auc_score(y_test, log_probs[:,1])
                 print('For the {0}-th epoch, train loss: {1}, test acc: {2}'.format(i+1, loss.numpy(), acc))
                 
                 test_epoch_array.append(i+1)
@@ -295,12 +347,12 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='vertical FL')
-    parser.add_argument('--dname', default='adult', help='dataset name')
-    parser.add_argument('--epochs', type=int, default=10, help='number of training epochs') 
+    parser.add_argument('--dname', default='AVAZU', help='dataset name')
+    parser.add_argument('--epochs', type=int, default=50, help='number of training epochs') 
     parser.add_argument('--batch_type', type=str, default='mini-batch')  
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--data_type', default='original', help='define the data options: original or one-hot encoded')
-    parser.add_argument('--model_type', default='vertical', help='define the learning methods: vrtical or centralized')    
+    parser.add_argument('--model_type', default='centralized', help='define the learning methods: vrtical or centralized')    
     parser.add_argument('--organization_num', type=int, default='3', help='number of origanizations, if we use vertical FL')    
 
 

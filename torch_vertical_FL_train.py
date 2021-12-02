@@ -14,9 +14,9 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 from sklearn import preprocessing
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, roc_auc_score
 # https://imbalanced-learn.org/stable/
-
+from avazudataset import AvazuDataset
 from utils import load_dat, batch_split, create_avazu_dataset
 """
 Reference
@@ -32,7 +32,7 @@ def main(args):
     organization_num = args.organization_num    # number of participants in vertical FL
     attribute_split_array = \
         np.zeros(organization_num).astype(int)  # initialize a dummy split scheme of attributes
-    nrows = 20000                                # subselection of rows to speed up the program
+    nrows = 50000                                # subselection of rows to speed up the program
     
     # dataset preprocessing
     if data_type == 'original': 
@@ -55,7 +55,11 @@ def main(args):
                 #print(dt.value_counts(dt[attribute]))
                 plt.figure()
                 X.value_counts(X[attribute]).sort_index(ascending=True).plot(kind='bar')
-               
+             
+            # get the attribute data and label data
+            y = X['income'].values.astype('int')
+            X = X.drop(['income'], axis=1)
+                       
             N, dim = X.shape
                
              # Print out the dataset settings
@@ -63,64 +67,71 @@ def main(args):
             print("\nDataset:", args.dname, \
                    "\nNumber of attributes:", dim-1, \
                    "\nNumber of labels:", 1, \
-                   "\nNumber of rows:", N)        
+                   "\nNumber of rows:", N,\
+                   "\nPostive ratio:", sum(y)/len(y))     
                
             columns = list(X.columns)
-             
-             # get the attribute data and label data
-            y = X['income'].values.astype('int')
-            X = X.drop(['income'], axis=1)
              
              # set up the attribute split scheme for vertical FL
             attribute_split_array = \
                  np.ones(len(attribute_split_array)).astype(int) * \
-                 int((dim-1)/organization_num)
+                 int(dim/organization_num)
                  
              # correct the attribute split scheme if the total attribute number is larger than the actual attribute number
-            if np.sum(attribute_split_array) > dim-1:
+            if np.sum(attribute_split_array) > dim:
                 print('unknown error in attribute splitting!')
-            elif np.sum(attribute_split_array) < dim-1:
-                missing_attribute_num = (dim-1) - np.sum(attribute_split_array)
+            elif np.sum(attribute_split_array) < dim:
+                missing_attribute_num = (dim) - np.sum(attribute_split_array)
                 attribute_split_array[-1] = attribute_split_array[-1] + missing_attribute_num
             else:
                 print('Successful attribute split for multiple organizations')
      
         elif args.dname == 'AVAZU':
             
-            file_path = './datasets/{0}.gz'.format(args.dname)           
-            data = pd.read_csv(file_path, compression='gzip', nrows=nrows)
+            file_path = './datasets/{0}.gz'.format(args.dname)
+            df = pd.read_csv(file_path, compression='gzip', nrows=nrows)
+            df.to_csv('./datasets/{0}.csv'.format(args.dname), index=False)
             
-            X = data.fillna('-1')
+            columns = df.columns.drop('id')
+            # data = pd.read_csv(file_path, compression='gzip', nrows=nrows)
+            data = AvazuDataset('./datasets/{0}.csv'.format(args.dname), rebuild_cache=True)
             
-            X.head()
+            # X = data.fillna('-1')
+            
+            # X.head()
+
+            X, y = [data[i][0] for i in range(len(data))], [data[i][1] for i in range(len(data))]
+            y = np.reshape(y, [len(y), 1])
+            data = np.concatenate((y, X),axis=1)
+            
+            X = pd.DataFrame(data, columns=columns)
+            
+            # get the attribute data and label data
+            y = X['click'].values.astype('int')
+            X = X.drop(['click'], axis=1)
             
             N, dim = X.shape
-            
-            dim = dim-1
                
-             # Print out the dataset settings
+              # Print out the dataset settings
             print("\n\n=================================")
             print("\nDataset:", args.dname, \
-                   "\nNumber of attributes:", dim-1, \
-                   "\nNumber of labels:", 1, \
-                   "\nNumber of rows:", N)
-            
-            X = data.drop(['click', 'id'], axis=1)
+                    "\nNumber of attributes:", dim-1, \
+                    "\nNumber of labels:", 1, \
+                    "\nNumber of rows:", N,\
+                    "\nPostive ratio:", sum(y)/len(y))            
             
             columns = list(X.columns)
             
-            y = data['click'].values
-            
-             # set up the attribute split scheme for vertical FL
+              # set up the attribute split scheme for vertical FL
             attribute_split_array = \
-                 np.ones(len(attribute_split_array)).astype(int) * \
-                 int((dim-1)/organization_num)
+                  np.ones(len(attribute_split_array)).astype(int) * \
+                  int(dim/organization_num)
                  
-             # correct the attribute split scheme if the total attribute number is larger than the actual attribute number
-            if np.sum(attribute_split_array) > dim-1:
+              # correct the attribute split scheme if the total attribute number is larger than the actual attribute number
+            if np.sum(attribute_split_array) > dim:
                 print('unknown error in attribute splitting!')
-            elif np.sum(attribute_split_array) < dim-1:
-                missing_attribute_num = (dim-1) - np.sum(attribute_split_array)
+            elif np.sum(attribute_split_array) < dim:
+                missing_attribute_num = dim - np.sum(attribute_split_array)
                 attribute_split_array[-1] = attribute_split_array[-1] + missing_attribute_num
             else:
                 print('Successful attribute split for multiple organizations')
@@ -132,7 +143,7 @@ def main(args):
     
     # initialize the arrays to be return to the main function
     loss_array = []
-    acc_array = []
+    auc_array = []
     test_epoch_array = []
     
     if model_type == 'vertical':
@@ -160,16 +171,11 @@ def main(args):
         chy_one_hot_enc = preprocessing.OneHotEncoder(sparse=False, handle_unknown='ignore')
         for organization_idx in range(organization_num):
             
-            if args.dname == 'ADULT':
-                vertical_splitted_data[organization_idx] = \
-                    X[attribute_groups[organization_idx]].values.astype('float32')
-                encoded_vertical_splitted_data[organization_idx] = \
-                    chy_one_hot_enc.fit_transform(vertical_splitted_data[organization_idx])
-            elif args.dname == 'AVAZU':
-                vertical_splitted_data[organization_idx] = \
-                    pd.get_dummies(X[attribute_groups[organization_idx]])
-                encoded_vertical_splitted_data[organization_idx] = \
-                    vertical_splitted_data[organization_idx].values.astype('float32')
+            vertical_splitted_data[organization_idx] = \
+                X[attribute_groups[organization_idx]].values.astype('float32')
+            encoded_vertical_splitted_data[organization_idx] = \
+                chy_one_hot_enc.fit_transform(vertical_splitted_data[organization_idx])
+                
             print('The shape of the encoded dataset held by Organization {0}: {1}'.format(organization_idx, np.shape(encoded_vertical_splitted_data[organization_idx])))                       
         
         # set up the random seed for dataset split
@@ -198,18 +204,21 @@ def main(args):
             # test_loader = DataLoader(X_test_vertical_FL[organization_idx], batch_size=len(X_test_vertical_FL[organization_idx]), shuffle=False)
                       
             
-        y_train = torch.from_numpy(y_train).long()
-        y_test = torch.from_numpy(y_test).long()
+        # y_train = torch.from_numpy(y_train).long()
+        # y_test = torch.from_numpy(y_test).long()
+        
+        y_train = torch.from_numpy(y_train).float()
+        y_test = torch.from_numpy(y_test).float()
     
         train_loader_list.append(DataLoader(y_train, batch_size=args.batch_size))
         test_loader_list.append(DataLoader(y_test, batch_size=args.batch_size))
   
         # set the neural network structure parameters
-        organization_hidden_units_array = [np.array([32])]*organization_num
+        organization_hidden_units_array = [np.array([128])]*organization_num
         organization_output_dim = np.array([64 for i in range(organization_num)])
     
         top_hidden_units = np.array([64])
-        top_output_dim = 2
+        top_output_dim = 1
         
         # build the client models
         organization_models = {}
@@ -223,7 +232,7 @@ def main(args):
         top_model = torch_top_model(sum(organization_output_dim), top_hidden_units, top_output_dim)
     
         # define the neural network optimizer
-        optimizer = torch.optim.Adam(top_model.parameters(), lr=0.01)
+        optimizer = torch.optim.Adam(top_model.parameters(), lr=0.002)
         
         optimizer_organization_list = []
         for organization_idx in range(organization_num):
@@ -235,7 +244,8 @@ def main(args):
         # conduct vertical FL
         print('\nStart vertical FL......\n')   
         
-        criterion = nn.CrossEntropyLoss()
+        # criterion = nn.CrossEntropyLoss()
+        criterion = nn.BCELoss()
     
         top_model.train()
         for i in range(epochs):
@@ -245,21 +255,26 @@ def main(args):
             for batch_idxs in batch_idxs_list:
                 optimizer.zero_grad()
                 
+                for organization_idx in range(organization_num):
+                    
+                    optimizer_organization_list[organization_idx].zero_grad()
+                
                 organization_outputs = {}
                 for organization_idx in range(organization_num):
                         organization_outputs[organization_idx] = \
                             organization_models[organization_idx](X_train_vertical_FL[organization_idx][batch_idxs])
     
-                    
+                
+                organization_outputs_cat = organization_outputs[0]
                 if len(organization_outputs) >= 2:
-                    organization_outputs_cat = organization_outputs[0]
                     for organization_idx in range(1, organization_num):
                         organization_outputs_cat = torch.cat((organization_outputs_cat,\
                                         organization_outputs[organization_idx]), 1)
                     
                 outputs = top_model(organization_outputs_cat)
-    
-                loss = criterion(outputs, y_train[batch_idxs])
+                logits = torch.sigmoid(outputs)
+                logits = torch.reshape(logits, shape=[len(logits)])
+                loss = criterion(logits, y_train[batch_idxs])
                 loss.backward()
                 optimizer.step()
                 
@@ -273,28 +288,30 @@ def main(args):
                 for organization_idx in range(organization_num):
                     organization_outputs_for_test[organization_idx] = \
                         organization_models[organization_idx](X_test_vertical_FL[organization_idx])
-                
-            if len(organization_outputs_for_test) >= 2:
+            
                 organization_outputs_for_test_cat = organization_outputs_for_test[0]
-                for organization_idx in range(1, organization_num):
-                    organization_outputs_for_test_cat = torch.cat((organization_outputs_for_test_cat,\
-                                    organization_outputs_for_test[organization_idx]), 1)
-                
-                log_probs = top_model(organization_outputs_for_test_cat)
-                pre = torch.argmax(log_probs, axis=1)
-                acc = accuracy_score(y_test, pre)
-                print('For the {0}-th epoch, train loss: {1}, test acc: {2}'.format(i+1, loss.detach().numpy(), acc))
+                if len(organization_outputs_for_test) >= 2:
+                    
+                    for organization_idx in range(1, organization_num):
+                        organization_outputs_for_test_cat = torch.cat((organization_outputs_for_test_cat,\
+                                        organization_outputs_for_test[organization_idx]), 1)
+                    
+                outputs = top_model(organization_outputs_for_test_cat)
+                log_probs = torch.sigmoid(outputs)
+                log_probs = torch.reshape(log_probs, shape=[len(log_probs)])
+                # pre = torch.argmax(log_probs, axis=1)
+                # acc = accuracy_score(y_test, pre)
+                auc = roc_auc_score(y_test, log_probs.data)
+                print('For the {0}-th epoch, train loss: {1}, test auc: {2}'.format(i+1, loss.detach().numpy(), auc))
                 
                 test_epoch_array.append(i+1)
                 loss_array.append(loss.detach().numpy())
-                acc_array.append(acc)
+                auc_array.append(auc)
  
     elif model_type == 'centralized':
-        if args.dname == 'ADULT':
-            chy_one_hot_enc = preprocessing.OneHotEncoder(sparse=False, handle_unknown='ignore')
-            X = chy_one_hot_enc.fit_transform( X )
-        elif args.dname == 'AVAZU':       
-            X = pd.get_dummies(X).values
+        
+        chy_one_hot_enc = preprocessing.OneHotEncoder(sparse=False, handle_unknown='ignore')
+        X = chy_one_hot_enc.fit_transform( X )
             
     
         print('Client data shape: {}, postive ratio: {}'.format(X.shape, sum(y)/len(y)))
@@ -302,9 +319,12 @@ def main(args):
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
     
         X_train = torch.from_numpy(X_train).float()
-        y_train = torch.from_numpy(y_train).long()
         X_test = torch.from_numpy(X_test).float()
-        y_test = torch.from_numpy(y_test).long()
+        # y_train = torch.from_numpy(y_train).long()
+        # y_test = torch.from_numpy(y_test).long()
+
+        y_train = torch.from_numpy(y_train).float()
+        y_test = torch.from_numpy(y_test).float()
     
         train_data = TensorDataset(X_train, y_train)
         test_data = TensorDataset(X_test, y_test)
@@ -315,13 +335,13 @@ def main(args):
         # X_train, y_train = sm.fit_resample( X_train, y_train )
         # print('SMOTE, X_train.shape: ', X_train.shape)
         
-        hidden_units = np.array([128])
+        hidden_units = np.array([128,64,32])
     
-        model = MlpModel(input_dim=X_train.shape[-1], hidden_units=hidden_units, num_classes=2)
-        optimizer = optimizer = torch.optim.Adam(model.parameters(), lr=0.002)
+        model = MlpModel(input_dim=X_train.shape[-1], hidden_units=hidden_units, num_classes=1)
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.002)
         
-        criterion = nn.CrossEntropyLoss()
-        # criterion = nn.BCELoss()
+        # criterion = nn.CrossEntropyLoss()
+        criterion = nn.BCELoss()
     
         model.train()
         for i in range(epochs):
@@ -329,39 +349,44 @@ def main(args):
                 optimizer.zero_grad()
     
                 # compute output
-                logits = model(data)
-                # logits = torch.sigmoid(outputs)
-                # outputs = torch.reshape(outputs, shape = [len(outputs)])
+                outputs = model(data)
+                logits = torch.sigmoid(outputs)
+                logits = torch.reshape(logits, shape = [len(logits)])
                 # print(outputs.dtype, targets.dtype)
                 loss = criterion(logits, targets)
                 loss.backward()
                 optimizer.step()
     
             for idx, (data, targets) in enumerate(test_loader):
-                log_probs = model(data)
-                # y_pred = [1 if i > 0.5 else 0 for i in log_probs.data]
-                y_pred = np.argmax(log_probs.data, axis=1)
-                acc = accuracy_score(y_true=targets.data, y_pred=y_pred)
-            print('For the {}-th epoch, test acc: {}'.format(i, acc))
+                outputs = model(data)
+                log_probs = torch.sigmoid(outputs)
+                # y_pred = np.argmax(log_probs.data, axis=1)
+                # acc = accuracy_score(y_true=targets.data, y_pred=y_pred)
+                auc = roc_auc_score(targets.data, log_probs.data)
+            print('For the {}-th epoch, test auc: {}'.format(i, auc))
             
-    return test_epoch_array, loss_array, acc_array
+            test_epoch_array.append(i+1)
+            loss_array.append(loss.detach().numpy())
+            auc_array.append(auc)
+            
+    return test_epoch_array, loss_array, auc_array
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='vertical FL')
-    parser.add_argument('--dname', default='ADULT', help='dataset name: AVAZU, ADULT')
-    parser.add_argument('--epochs', type=int, default=10, help='number of training epochs')  
+    parser.add_argument('--dname', default='AVAZU', help='dataset name: AVAZU, ADULT')
+    parser.add_argument('--epochs', type=int, default=30, help='number of training epochs')  
     parser.add_argument('--batch_type', type=str, default='mini-batch')    
-    parser.add_argument('--batch_size', type=int, default=512)
+    parser.add_argument('--batch_size', type=int, default=500)
     parser.add_argument('--data_type', default='original', help='define the data options: original or one-hot encoded')
     parser.add_argument('--model_type', default='centralized', help='define the learning methods: vrtical or centralized')    
-    parser.add_argument('--organization_num', type=int, default='3', help='number of origanizations, if we use vertical FL')
+    parser.add_argument('--organization_num', type=int, default='2', help='number of origanizations, if we use vertical FL')
 
     args = parser.parse_args()
 
     start_time = time.time()
     
     # collect experimental results
-    test_epoch_array, loss_array, acc_array = main(args)
+    test_epoch_array, loss_array, auc_array = main(args)
 
     elapsed = time.time() - start_time
     mins, sec = divmod(elapsed, 60)
@@ -377,7 +402,7 @@ if __name__ == "__main__":
     
     
     figure_acc = plt.figure(figsize = (8, 6))
-    plt.plot(test_epoch_array, acc_array)
+    plt.plot(test_epoch_array, auc_array)
     plt.xlabel('Communication round #')
     plt.ylabel('Test accuracy')
     plt.ylim([0, 1])  

@@ -74,13 +74,17 @@ class tf_graph(Model):
         super().__init__()
         self.Dense = Sequential()
         for i in hidden_units:
-            self.Dense.add(Dense(i, activation=activation))
-        self.Dense.add(Dense(output_dim, activation=None))
+            self.Dense.add(Dense(i,
+                                 activation=activation,
+                                 kernel_regularizer=tf.keras.regularizers.L2(0.1)))
+        self.Dense.add(Dense(output_dim,
+                             activation=None,
+                             kernel_regularizer=tf.keras.regularizers.L2(0.1)))
         # self.Dense = Dense_layer(hidden_units, output_dim, activation)
 
     def call(self, inputs):
 
         output = self.Dense(inputs)
-        output = tf.nn.softmax(output)
+        # output = tf.nn.softmax(output)
 
         return output

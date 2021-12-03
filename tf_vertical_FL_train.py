@@ -28,7 +28,7 @@ def main(args):
     data_type = args.data_type           # Define the data options: 'original', 'encoded'
     model_type = args.model_type         # Define the learning methods: 'vertical', 'centralized'
     epochs = args.epochs                 # number of training epochs
-    nrows = 20000                        # subselection of rows to speed up the program
+    nrows = 50000                        # subselection of rows to speed up the program
     
     # Ming added the following variables for configurable vertical FL
     organization_num = args.organization_num    # number of participants in vertical FL
@@ -87,7 +87,7 @@ def main(args):
                 print('Successful attribute split for multiple organizations')
                 
                 
-        elif args.dname == 'AVAZU':
+        elif args.dname == 'avazu':
             
             file_path = './datasets/{0}.gz'.format(args.dname)
             df = pd.read_csv(file_path, compression='gzip', nrows=nrows)
@@ -116,7 +116,7 @@ def main(args):
              # Print out the dataset settings
             print("\n\n=================================")
             print("\nDataset:", args.dname, \
-                   "\nNumber of attributes:", dim-1, \
+                   "\nNumber of attributes:", dim, \
                    "\nNumber of labels:", 1, \
                    "\nNumber of rows:", N,\
                    "\nPostive ratio:", sum(y)/len(y))            
@@ -300,16 +300,16 @@ def main(args):
         X_train, X_test, y_train, y_test = \
             train_test_split(X, y, test_size=0.2, random_state=0)    
 
-        y_train = to_categorical(y_train, 2)
+        # y_train = to_categorical(y_train, 2)
 
-        hidden_units = [96, 192, 64]
-        output_dim = 2
+        hidden_units = [128, 32]
+        output_dim = 1
         
         activation = 'relu'
         
         model = tf_graph(hidden_units, output_dim, activation)
     
-        optimizer = optimizers.Adam(learning_rate=0.002, name='Adam')
+        optimizer = optimizers.Adam(learning_rate=0.0002, name='Adam')
         
         # optimizer = optimizers.SGD(learning_rate=0.02, momentum=0)
     
@@ -317,37 +317,39 @@ def main(args):
         print('\nStart centralized learning......\n')
         for i in range(epochs):
             
-            batch_idxs_list = batch_split(len(X_train[0]), args.batch_size, args.batch_type)
+            batch_idxs_list = batch_split(len(X_train), args.batch_size, args.batch_type)
             
             for batch_idxs in batch_idxs_list:
             
                 with tf.GradientTape() as tape:
     
                     # SGD optimization of the neural network
-                    y_pre = model(X_train[batch_idxs])
+                    logits = model(X_train[batch_idxs])
                     # print(y_pre.shape, y_train.shape)
-                    loss = tf.reduce_mean(losses.categorical_crossentropy(y_true=y_train[batch_idxs], y_pred=y_pre))
+                    loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=logits, 
+                                        labels=tf.dtypes.cast(tf.reshape(y_train[batch_idxs], shape=[-1, 1]), tf.float32)))
+                    # loss = tf.reduce_mean(losses.categorical_crossentropy(y_true=y_train[batch_idxs], y_pred=y_pre))
     
                     model_grad = tape.gradient(loss, model.variables)
                     optimizer.apply_gradients(grads_and_vars=zip(model_grad, model.variables))
         
             # let the program report the simulation progress
             if (i+1)%1 == 0:
-                log_probs = model(X_test)
+                logits = tf.math.sigmoid(model(X_test))
                 # pre = tf.argmax(log_probs, axis=1)
                 # acc = accuracy_score(y_test, pre)
-                acc = roc_auc_score(y_test, log_probs[:,1])
-                print('For the {0}-th epoch, train loss: {1}, test acc: {2}'.format(i+1, loss.numpy(), acc))
+                auc = roc_auc_score(y_test, logits)
+                print('For the {0}-th epoch, train loss: {1}, test auc: {2}'.format(i+1, loss.numpy(), auc))
                 
                 test_epoch_array.append(i+1)
                 loss_array.append(loss.numpy())
-                acc_array.append(acc)
+                acc_array.append(auc)
     
     return test_epoch_array, loss_array, acc_array
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='vertical FL')
-    parser.add_argument('--dname', default='AVAZU', help='dataset name')
+    parser.add_argument('--dname', default='avazu', help='dataset name: avazu, adult')
     parser.add_argument('--epochs', type=int, default=50, help='number of training epochs') 
     parser.add_argument('--batch_type', type=str, default='mini-batch')  
     parser.add_argument('--batch_size', type=int, default=512)

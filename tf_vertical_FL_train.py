@@ -22,6 +22,7 @@ from sklearn.preprocessing import StandardScaler
 from avazudataset import AvazuDataset
 from utils import create_criteo_dataset, load_dat, batch_split
 from tf_model import tf_organization_graph, tf_top_graph, tf_graph
+from quantization_sche import quant_process
 
 def main(args):
     
@@ -249,8 +250,12 @@ def main(args):
         
                     organization_outputs = {}
                     for organization_idx in range(organization_num):
-                        organization_outputs[organization_idx] = \
-                            organization_models[organization_idx](X_train_vertical_FL[organization_idx][batch_idxs])
+                        
+                        forward_output = organization_models[organization_idx](X_train_vertical_FL[organization_idx][batch_idxs])
+
+                        # local_quant = quant_process(args.quant_sche, forward_output, args.quant_level, args.base_bits)
+                        # forward_output_quant, communication_cost, mse_error = local_quant.quant()
+                        organization_outputs[organization_idx] = forward_output
                         
                     y_pre = top_model(organization_outputs)
                     
@@ -349,13 +354,16 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='vertical FL')
-    parser.add_argument('--dname', default='avazu', help='dataset name: avazu, adult')
-    parser.add_argument('--epochs', type=int, default=50, help='number of training epochs') 
+    parser.add_argument('--dname', default='adult', help='dataset name: avazu, adult')
+    parser.add_argument('--epochs', type=int, default=20, help='number of training epochs') 
     parser.add_argument('--batch_type', type=str, default='mini-batch')  
     parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--data_type', default='original', help='define the data options: original or one-hot encoded')
-    parser.add_argument('--model_type', default='centralized', help='define the learning methods: vrtical or centralized')    
-    parser.add_argument('--organization_num', type=int, default='3', help='number of origanizations, if we use vertical FL')    
+    parser.add_argument('--model_type', default='vertical', help='define the learning methods: vrtical or centralized')    
+    parser.add_argument('--organization_num', type=int, default=2, help='number of origanizations, if we use vertical FL')    
+    parser.add_argument('--quant_sche', default='bucket_uniform')    
+    parser.add_argument('--quant_level', type=int, default=128)
+    parser.add_argument('--base_bits', type=int, default=16)      
 
 
     args = parser.parse_args()

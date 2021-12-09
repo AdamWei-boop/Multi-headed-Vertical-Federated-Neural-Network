@@ -29,7 +29,7 @@ def main(args):
     data_type = args.data_type           # Define the data options: 'original', 'encoded'
     model_type = args.model_type         # Define the learning methods: 'vertical', 'centralized'
     epochs = args.epochs                 # number of training epochs
-    nrows = 50000                        # subselection of rows to speed up the program
+    nrows = 100000                        # subselection of rows to speed up the program
     
     # Ming added the following variables for configurable vertical FL
     organization_num = args.organization_num    # number of participants in vertical FL
@@ -252,10 +252,10 @@ def main(args):
                     for organization_idx in range(organization_num):
                         
                         forward_output = organization_models[organization_idx](X_train_vertical_FL[organization_idx][batch_idxs])
-
-                        local_quant = quant_process(args.quant_sche, forward_output, args.quant_level, args.base_bits)
-                        forward_output_incre, communication_cost, mse_error = local_quant.quant()
-                        forward_output = forward_output + forward_output_incre
+                        if args.quant_sche != 'non-compression':
+                            local_quant = quant_process(args.quant_sche, forward_output, args.quant_level, args.base_bits)
+                            forward_output_incre, communication_cost, mse_error = local_quant.quant()
+                            forward_output = forward_output + forward_output_incre
                         organization_outputs[organization_idx] = forward_output
                         
                     y_pre = top_model(organization_outputs)
@@ -358,12 +358,12 @@ if __name__ == "__main__":
     parser.add_argument('--dname', default='adult', help='dataset name: avazu, adult')
     parser.add_argument('--epochs', type=int, default=20, help='number of training epochs') 
     parser.add_argument('--batch_type', type=str, default='mini-batch')  
-    parser.add_argument('--batch_size', type=int, default=512)
+    parser.add_argument('--batch_size', type=int, default=20000)
     parser.add_argument('--data_type', default='original', help='define the data options: original or one-hot encoded')
     parser.add_argument('--model_type', default='vertical', help='define the learning methods: vrtical or centralized')    
     parser.add_argument('--organization_num', type=int, default=2, help='number of origanizations, if we use vertical FL')    
-    parser.add_argument('--quant_sche', default='bucket_uniform')    
-    parser.add_argument('--quant_level', type=int, default=2)
+    parser.add_argument('--quant_sche', default='non-compression', help='bucket_uniform, non-compression')    
+    parser.add_argument('--quant_level', type=int, default=128)
     parser.add_argument('--base_bits', type=int, default=16)      
 
 

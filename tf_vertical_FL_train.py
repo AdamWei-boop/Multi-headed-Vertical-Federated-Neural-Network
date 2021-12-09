@@ -253,8 +253,9 @@ def main(args):
                         
                         forward_output = organization_models[organization_idx](X_train_vertical_FL[organization_idx][batch_idxs])
 
-                        # local_quant = quant_process(args.quant_sche, forward_output, args.quant_level, args.base_bits)
-                        # forward_output_quant, communication_cost, mse_error = local_quant.quant()
+                        local_quant = quant_process(args.quant_sche, forward_output, args.quant_level, args.base_bits)
+                        forward_output_incre, communication_cost, mse_error = local_quant.quant()
+                        forward_output = forward_output + forward_output_incre
                         organization_outputs[organization_idx] = forward_output
                         
                     y_pre = top_model(organization_outputs)
@@ -362,7 +363,7 @@ if __name__ == "__main__":
     parser.add_argument('--model_type', default='vertical', help='define the learning methods: vrtical or centralized')    
     parser.add_argument('--organization_num', type=int, default=2, help='number of origanizations, if we use vertical FL')    
     parser.add_argument('--quant_sche', default='bucket_uniform')    
-    parser.add_argument('--quant_level', type=int, default=128)
+    parser.add_argument('--quant_level', type=int, default=2)
     parser.add_argument('--base_bits', type=int, default=16)      
 
 

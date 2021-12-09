@@ -40,7 +40,6 @@ class quant_process(object):
             
             min_value, max_value = min(self.values_update)-(1e-5), max(self.values_update)+(1e-5)
             
-            print('\nForward output:', self.values_update)
             _, uniform_bucket = np.histogram(self.values_update,
                                                 bins=self.quant_level,
                                                 range=[min_value, max_value],
@@ -49,6 +48,7 @@ class quant_process(object):
             quant_w = quant_recover_boundary(self.values_update, uniform_bucket)
             
             quant_w = tf.reshape(quant_w, shape = self.values_shape)
+            
             
             communication_cost = self.base_bits * self.quant_level + np.ceil(np.log2(len(self.values_update)))
         
@@ -61,4 +61,6 @@ class quant_process(object):
             
         mse_error = np.linalg.norm(quant_w-self.values_update_org, ord=2)
         
-        return quant_w, communication_cost, mse_error
+        quant_incre = quant_w - self.values_update_org
+        
+        return quant_incre, communication_cost, mse_error
